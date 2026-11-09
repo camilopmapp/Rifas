@@ -120,6 +120,14 @@ async function copiar(t) { try { await navigator.clipboard.writeText(t); toast('
 document.addEventListener('click', e => { const b = e.target.closest('[data-copy]'); if (b) copiar(b.dataset.copy); });
 
 // ---------- piezas compartidas ----------
+const linkBoleta = (rid, bid) => `${BASE}?r=${encodeURIComponent(rid)}&b=${encodeURIComponent(bid)}`;
+const msgReserva = (r, x, link) =>
+  `🎟️ *Nueva reserva – ${r.titulo}*\n` +
+  `👤 ${x.nombre}\n📱 ${x.celular}\n` +
+  `🔢 Números: *${x.numeros.join(', ')}*\n` +
+  `💵 Total: *${money(x.total)}*\n\n` +
+  `Voy a hacer la transferencia y te envío el comprobante por aquí.\n` +
+  `Mi boleta: ${link}`;
 function hero(r) {
   const d = r.fechaSorteo ? new Date(r.fechaSorteo) : null;
   const fs = d && !isNaN(d) ? d.toLocaleString('es-CO', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
@@ -264,7 +272,15 @@ function vistaPublica(id) {
           tx.set(resRef, { nombre, celular: cel, numeros: nums, total: nums.length * d.valor, estado: 'pendiente', creada: serverTimestamp(), acepta: true });
         });
         guardarBoleta({ r: id, b: resRef.id, nums, titulo: r.titulo });
-        location.href = `${BASE}?r=${encodeURIComponent(id)}&b=${resRef.id}`;
+        const lb = linkBoleta(id, resRef.id);
+        if (r.whatsapp) {
+          // La página actual pasa a ser la boleta (al volver de WhatsApp, la ve) y se abre el chat del organizador
+          history.replaceState(null, '', lb);
+          location.href = wa(r.whatsapp, msgReserva(r, { nombre, celular: cel, numeros: nums, total: nums.length * r.valor }, lb));
+          // Al volver de WhatsApp se recarga y muestra la boleta; si WhatsApp no abrió, igual se muestra a los 8 s
+          document.addEventListener('visibilitychange', () => { if (!document.hidden) location.reload(); });
+          setTimeout(() => location.reload(), 8000);
+        } else location.href = lb;
       } catch (e) {
         b.disabled = false; b.textContent = 'Apartar';
         toast(/permission/i.test(e.message) ? 'No se pudo apartar. Recarga e intenta de nuevo.' : e.message, 4000);
@@ -290,7 +306,7 @@ function vistaBoleta(id, bid) {
       return;
     }
     const ok = x.estado === 'pagado';
-    const msg = `Hola, aparté los números ${x.numeros.join(', ')} de la rifa "${r.titulo}" por ${money(x.total)}. Mi nombre es ${x.nombre}. Te envío el comprobante de pago.\nMi boleta: ${link}`;
+    const msg = msgReserva(r, x, link);
     main.innerHTML = hero(r) + avisoEstado(r) + `
       <section class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">Tu boleta</h2>
         <span class="pill ${ok ? 'p-ok' : 'p-warn'}" style="flex:0 0 auto">${ok ? 'PAGO CONFIRMADO' : 'PENDIENTE DE PAGO'}</span></div>
@@ -300,7 +316,7 @@ function vistaBoleta(id, bid) {
       <section class="card"><h2>Cómo pagar</h2>
         <ol style="padding-left:18px;margin:0 0 8px"><li>Transfiere <b>${money(x.total)}</b> a uno de estos medios.</li><li>Envía el comprobante al organizador por WhatsApp.</li><li>Espera la confirmación: esta página se actualiza sola.</li></ol>
         ${pagosHTML(r)}
-        ${r.whatsapp ? `<a class="btn" style="width:100%;margin-top:8px" target="_blank" rel="noopener" href="${esc(wa(r.whatsapp, msg))}">Enviar comprobante por WhatsApp</a>` : ''}</section>`}
+        ${r.whatsapp ? `<a class="btn" style="width:100%;margin-top:8px" target="_blank" rel="noopener" href="${esc(wa(r.whatsapp, msg))}">📲 Avisar al organizador por WhatsApp</a>` : ''}</section>`}
       <section class="card"><p class="mu" style="margin-top:0">Guarda este link para consultar tu boleta:</p>
         <div class="row"><button class="btn2 sm" data-copy="${esc(link)}">Copiar link de mi boleta</button><a class="btn btn2 sm" href="${tablero}">Ver tablero</a></div></section>`;
   };
@@ -333,6 +349,7 @@ function vistaPanel() {
       main.innerHTML = `<section class="card"><h2>Cuenta no autorizada</h2><p>La cuenta <b>${esc(mail)}</b> no tiene permiso para crear rifas. Pídele al administrador que la agregue.</p><button class="btn2" id="so">Salir</button></section>`;
       $('so').onclick = () => signOut(auth); return;
     }
+    if (typeof org.admin === 'string') toast('En Firestore, el campo "admin" debe ser tipo boolean (no texto) para ver Organizadores.', 7000);
     if (P.get('r')) panelRifa(P.get('r'), u); else panelInicio(u, mail, org.admin === true);
   });
 }
@@ -341,8 +358,9 @@ async function panelInicio(u, mail, admin) {
   color(null);
   main.innerHTML = `<div class="row" style="justify-content:space-between;margin-bottom:12px"><div style="flex:3"><h1 style="margin:0">Mis rifas</h1><div class="mu">${esc(mail)}</div></div>
     <button class="btn2 sm" id="so" style="flex:0 0 auto">Salir</button></div>
-    <button id="nueva" style="width:100%;margin-bottom:14px">+ Nueva rifa</button>
-    <div id="lista"><p class="mu">Cargando…</p></div><div id="adm"></div>`;
+    <div class="row" style="margin-bottom:14px"><button id="nueva">+ Nueva rifa</button>
+    ${admin ? '<button id="orgs" class="btn2">👥 Organizadores</button>' : ''}</div>
+    <div id="adm" class="hide"></div><div id="lista"><p class="mu">Cargando…</p></div>`;
   $('so').onclick = () => signOut(auth);
   $('nueva').onclick = async () => {
     $('nueva').disabled = true;
@@ -363,7 +381,14 @@ async function panelInicio(u, mail, admin) {
       <div class="mu">${Object.keys(x.ocupados || {}).length} de ${10 ** x.cifras} números ocupados · ${money(x.valor)}</div></a>`).join('')
       : '<p class="mu">Aún no tienes rifas.</p>';
   } catch (e) { $('lista').innerHTML = `<p class="mu">Error: ${esc(e.message)}</p>`; }
-  if (admin) panelAdmin(mail);
+  if (admin) {
+    let cargado = false;
+    $('orgs').onclick = () => {
+      const box = $('adm'); box.classList.toggle('hide');
+      if (!cargado) { cargado = true; panelAdmin(mail); }
+      if (!box.classList.contains('hide')) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+  }
 }
 
 async function panelAdmin(mail) {
