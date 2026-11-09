@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rifas</title>
+<style>
+:root{--c:#0f766e;--bg:#f5f5f4;--card:#fff;--tx:#1c1917;--mu:#78716c;--ln:#e7e5e4;--ok:#15803d;--warn:#b45309;--bad:#b91c1c}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--tx);line-height:1.4}
+main{max-width:760px;margin:0 auto;padding:16px 14px 110px}
+a{color:var(--c)}
+.card{background:var(--card);border:1px solid var(--ln);border-radius:14px;padding:16px;margin-bottom:14px}
+h1{font-size:1.5rem;margin:0 0 6px}h2{font-size:1.15rem;margin:0 0 10px}h3{font-size:1rem;margin:16px 0 8px}
+.mu{color:var(--mu);font-size:.9rem}
+.hero{background:var(--c);color:#fff;border:none}
+.hero .mu{color:rgba(255,255,255,.88)}
+.precio{font-size:1.3rem;font-weight:700}
+.grid{display:grid;grid-template-columns:repeat(10,1fr);gap:5px}
+.n{aspect-ratio:1;border:1px solid var(--ln);border-radius:8px;background:#fff;font-weight:600;font-size:.95rem;cursor:pointer;padding:0;color:var(--tx);font-variant-numeric:tabular-nums}
+.grid.c3 .n{font-size:.78rem}.grid.c4 .n{font-size:.66rem}
+.n:disabled{opacity:1;cursor:default}
+.n.oc{background:#d6d3d1;color:#a8a29e;text-decoration:line-through}
+.n.sel{background:var(--c);color:#fff;border-color:var(--c)}
+.n.win{outline:3px solid #eab308;outline-offset:1px}
+.bar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--ln);padding:12px 14px;display:flex;gap:10px;align-items:center;justify-content:space-between;z-index:10;box-shadow:0 -4px 14px rgba(0,0,0,.06)}
+button,.btn{border:0;border-radius:10px;padding:11px 16px;font-weight:600;font-size:.95rem;cursor:pointer;background:var(--c);color:#fff;text-decoration:none;display:inline-block;text-align:center;font-family:inherit}
+.btn2{background:#fff;color:var(--tx);border:1px solid var(--ln)}
+.btnbad{background:var(--bad);color:#fff}
+.sm{padding:7px 11px;font-size:.85rem}
+button:disabled{opacity:.5;cursor:not-allowed}
+label{display:block;font-size:.85rem;font-weight:600;margin:10px 0 4px}
+input,select,textarea{width:100%;padding:10px;border:1px solid var(--ln);border-radius:9px;font:inherit;background:#fff;color:var(--tx)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.row>*{flex:1}
+.chk{display:flex;gap:8px;align-items:flex-start;font-weight:400;margin-top:12px}
+.chk input{width:auto;margin-top:3px}
+.pill{display:inline-block;padding:3px 9px;border-radius:99px;font-size:.75rem;font-weight:700}
+.p-ok{background:#dcfce7;color:var(--ok)}.p-warn{background:#fef3c7;color:var(--warn)}.p-mu{background:#e7e5e4;color:#57534e}
+.item{border-top:1px solid var(--ln);padding:10px 0}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;z-index:20}
+.modal .card{width:100%;max-width:520px;margin:0;border-radius:16px 16px 0 0;max-height:92vh;overflow:auto}
+.toast{position:fixed;top:14px;left:50%;transform:translateX(-50%);background:#1c1917;color:#fff;padding:10px 16px;border-radius:10px;z-index:30;font-size:.9rem;max-width:90%;text-align:center}
+.pago{display:flex;justify-content:space-between;gap:10px;align-items:center;border:1px dashed #d6d3d1;border-radius:10px;padding:10px;margin:6px 0}
+.big{font-size:1.6rem;font-weight:800;letter-spacing:1px;font-variant-numeric:tabular-nums}
+.hide{display:none!important}
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.stat{background:var(--bg);border-radius:10px;padding:10px}
+.stat b{display:block;font-size:1.05rem}
+</style>
+</head>
+<body>
+<main id="app"><p class="mu">Cargando…</p></main>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc, collection, query, where, onSnapshot, runTransaction, serverTimestamp, writeBatch, deleteField, FieldPath } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+// ================= 1. PEGA AQUÍ LA CONFIGURACIÓN DE TU PROYECTO FIREBASE =================
+const firebaseConfig = {
+  apiKey: "PEGAR_AQUI",
+  authDomain: "PEGAR_AQUI.firebaseapp.com",
+  projectId: "PEGAR_AQUI",
+  storageBucket: "PEGAR_AQUI.appspot.com",
+  messagingSenderId: "PEGAR_AQUI",
+  appId: "PEGAR_AQUI"
+};
+// =========================================================================================
+
+const COLOR = '#0f766e';
+const TIPOS_PAGO = ['Llave Bre-B', 'Nequi', 'Daviplata', 'Bancolombia', 'Cuenta de ahorros', 'Otro'];
+
+const fb = initializeApp(firebaseConfig);
+const auth = getAuth(fb);
+const db = getFirestore(fb);
+
+const $ = id => document.getElementById(id);
+const main = $('app');
+const P = new URLSearchParams(location.search);
+const BASE = location.origin + location.pathname;
+let subs = [];
+const limpiar = () => { subs.forEach(f => f()); subs = []; document.querySelectorAll('.bar,.modal').forEach(e => e.remove()); };
+
+// ---------- utilidades ----------
+const money = v => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(v || 0);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const pad = (n, c) => String(n).padStart(c, '0');
+const aFecha = ts => ts?.toDate ? ts.toDate() : (ts ? new Date(ts) : null);
+const fecha = ts => { const d = aFecha(ts); return d && !isNaN(d) ? d.toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' }) : ''; };
+const hace = ts => {
+  const d = aFecha(ts); if (!d) return '';
+  const m = Math.floor((Date.now() - d) / 60000);
+  if (m < 1) return 'hace un momento'; if (m < 60) return `hace ${m} min`;
+  const h = Math.floor(m / 60); if (h < 24) return `hace ${h} h`;
+  return `hace ${Math.floor(h / 24)} d`;
+};
+const waNum = n => { let d = String(n || '').replace(/\D/g, ''); if (d.length === 10) d = '57' + d; return d; };
+const wa = (num, txt) => `https://wa.me/${waNum(num)}?text=${encodeURIComponent(txt)}`;
+const color = r => document.documentElement.style.setProperty('--c', /^#[0-9a-f]{6}$/i.test(r?.color || '') ? r.color : COLOR);
+const ESTADOS = { borrador: ['Borrador', 'p-mu'], abierta: ['Abierta', 'p-ok'], cerrada: ['Ventas cerradas', 'p-warn'], sorteada: ['Sorteada', 'p-mu'] };
+const pillEstado = e => { const [t, c] = ESTADOS[e] || [e, 'p-mu']; return `<span class="pill ${c}" style="flex:0 0 auto">${esc(t)}</span>`; };
+
+function toast(m, ms = 2800) { const t = document.createElement('div'); t.className = 'toast'; t.textContent = m; document.body.appendChild(t); setTimeout(() => t.remove(), ms); }
+async function copiar(t) { try { await navigator.clipboard.writeText(t); toast('Copiado ✓'); } catch { prompt('Copia este texto:', t); } }
+document.addEventListener('click', e => { const b = e.target.closest('[data-copy]'); if (b) copiar(b.dataset.copy); });
+
+// ---------- piezas compartidas ----------
+function hero(r) {
+  const fs = r.fechaSorteo ? fecha(r.fechaSorteo) : '';
+  return `<section class="card hero">
+    <h1>${esc(r.titulo)}</h1>
+    ${r.premio ? `<div style="font-size:1.05rem">🎁 <b>${esc(r.premio)}</b></div>` : ''}
+    <div class="precio" style="margin:6px 0">${money(r.valor)} <span style="font-weight:400;font-size:.9rem">por número</span></div>
+    <div class="mu">Juega con las ${r.cifras} últimas cifras del premio mayor de la ${esc(r.loteria || 'lotería')}${fs ? ' · ' + esc(fs) : ''}</div>
+    ${r.resolucion ? `<div class="mu">Autorización: ${esc(r.resolucion)}</div>` : ''}
+  </section>`;
+}
+function avisoEstado(r) {
+  if (r.estado === 'borrador') return `<div class="card"><b>Esta rifa todavía no está abierta.</b></div>`;
+  if (r.estado === 'cerrada') return `<div class="card"><b>Ventas cerradas.</b> <span class="mu">Esperando el sorteo.</span></div>`;
+  if (r.estado === 'sorteada' && r.resultado) {
+    const x = r.resultado;
+    return `<div class="card" style="text-align:center"><div class="mu">La ${esc(r.loteria)} jugó <b>${esc(x.numeroLoteria)}</b></div>
+      <div class="mu" style="margin-top:6px">Número ganador</div><div class="big">${esc(x.ganador)}</div>
+      <div>${x.vendido ? '🎉 ¡Número vendido! El organizador contactará al ganador.' : 'No se vendió: el premio queda para el organizador.'}</div></div>`;
+  }
+  return '';
+}
+function pagosHTML(r) {
+  if (!r.pagos?.length) return '<p class="mu">El organizador aún no ha configurado los medios de pago.</p>';
+  return r.pagos.map(p => `<div class="pago"><div><div class="mu">${esc(p.tipo)}${p.titular ? ' · ' + esc(p.titular) : ''}</div>
+    <b style="font-size:1.1rem;word-break:break-all">${esc(p.dato)}</b></div>
+    <button class="sm btn2" style="flex:0 0 auto" data-copy="${esc(p.dato)}">Copiar</button></div>`).join('');
+}
+
+// ---------- boletas guardadas en este celular ----------
+const LS = 'rifas_boletas';
+const misBoletas = () => { try { return JSON.parse(localStorage.getItem(LS) || '[]'); } catch { return []; } };
+const guardarBoleta = b => { try { const l = misBoletas().filter(x => x.b !== b.b); l.unshift(b); localStorage.setItem(LS, JSON.stringify(l.slice(0, 30))); } catch { } };
+
+// ======================================================================
+// VISTA PÚBLICA: tablero de números
+// ======================================================================
+function vistaPublica(id) {
+  const ref = doc(db, 'rifas', id);
+  let r = null, sel = new Set(), bloque = 0, primera = true;
+  main.innerHTML = '<p class="mu">Cargando rifa…</p>';
+  const bar = document.createElement('div'); bar.className = 'bar hide';
+  bar.innerHTML = '<div style="min-width:0"><b id="bn"></b><div class="mu" id="bt"></div></div><button id="bgo" style="flex:0 0 auto">Apartar</button>';
+  document.body.appendChild(bar);
+  $('bgo').onclick = () => modal();
+
+  subs.push(onSnapshot(ref, s => {
+    if (!s.exists()) { main.innerHTML = '<div class="card"><h2>Rifa no encontrada</h2><p class="mu">Revisa el link.</p></div>'; bar.remove(); return; }
+    r = s.data(); color(r);
+    if (primera) { primera = false; armar(); }
+    $('hdr').innerHTML = hero(r);
+    $('est').innerHTML = avisoEstado(r);
+    $('reg').innerHTML = r.reglas ? `<section class="card"><h2>Reglas</h2><div style="white-space:pre-wrap">${esc(r.reglas)}</div></section>` : '';
+    $('maxr').textContent = r.maxReserva;
+    pintarBloques(); pintar();
+  }, err => { main.innerHTML = `<div class="card">No se pudo cargar la rifa: ${esc(err.message)}</div>`; }));
+
+  function armar() {
+    main.innerHTML = `<div id="hdr"></div><div id="est"></div>
+      <section class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0;flex:2">Escoge tus números</h2>
+      <span class="mu" id="libres" style="text-align:right"></span></div>
+      <div id="blq"></div><div id="grid" class="grid" style="margin-top:10px"></div>
+      <p class="mu" style="margin:10px 0 0">Los números en gris ya están ocupados. Máximo <span id="maxr"></span> por reserva.</p></section>
+      <div id="reg"></div><div id="mis"></div>`;
+    $('grid').addEventListener('click', e => {
+      const b = e.target.closest('.n'); if (!b || b.disabled) return;
+      const k = b.dataset.n;
+      if (sel.has(k)) sel.delete(k);
+      else { if (sel.size >= r.maxReserva) { toast(`Máximo ${r.maxReserva} números por reserva`); return; } sel.add(k); }
+      b.classList.toggle('sel', sel.has(k)); barra();
+    });
+    const mis = misBoletas().filter(x => x.r === id);
+    if (mis.length) $('mis').innerHTML = `<section class="card"><h2>Mis boletas en este celular</h2>${mis.map(x =>
+      `<div class="item"><a href="${BASE}?r=${encodeURIComponent(id)}&b=${encodeURIComponent(x.b)}">Números ${esc((x.nums || []).join(', '))}</a></div>`).join('')}</section>`;
+  }
+  function pintarBloques() {
+    const c = r.cifras;
+    if (c <= 2) { $('blq').innerHTML = ''; return; }
+    const nb = 10 ** c / 100; if (bloque >= nb) bloque = 0;
+    if ($('selb') && $('selb').options.length === nb) return;
+    let o = ''; for (let i = 0; i < nb; i++) o += `<option value="${i}" ${i === bloque ? 'selected' : ''}>${pad(i * 100, c)} – ${pad(i * 100 + 99, c)}</option>`;
+    $('blq').innerHTML = `<label>Bloque de números</label><select id="selb">${o}</select>`;
+    $('selb').onchange = e => { bloque = +e.target.value; pintar(); };
+  }
+  function pintar() {
+    const c = r.cifras, total = 10 ** c, oc = r.ocupados || {}, abierta = r.estado === 'abierta', gan = r.resultado?.ganador;
+    for (const k of [...sel]) if (oc[k]) { sel.delete(k); toast(`El ${k} lo acaba de apartar otra persona`); }
+    if (!abierta) sel.clear();
+    const ini = c > 2 ? bloque * 100 : 0, fin = c > 2 ? ini + 100 : total;
+    let h = '';
+    for (let i = ini; i < fin; i++) {
+      const k = pad(i, c), o = !!oc[k];
+      h += `<button class="n${o ? ' oc' : ''}${sel.has(k) ? ' sel' : ''}${gan === k ? ' win' : ''}" data-n="${k}"${o || !abierta ? ' disabled' : ''}>${k}</button>`;
+    }
+    const g = $('grid'); g.className = `grid c${c}`; g.innerHTML = h;
+    $('libres').textContent = `${Math.max(0, total - Object.keys(oc).length)} libres de ${total}`;
+    barra();
+  }
+  function barra() {
+    if (!sel.size) { bar.classList.add('hide'); return; }
+    bar.classList.remove('hide');
+    const n = [...sel].sort();
+    $('bn').textContent = `${n.length} número${n.length > 1 ? 's' : ''}: ${n.join(', ')}`;
+    $('bt').textContent = `Total ${money(n.length * r.valor)}`;
+  }
+  function modal() {
+    const nums = [...sel].sort(); if (!nums.length) return;
+    const m = document.createElement('div'); m.className = 'modal';
+    m.innerHTML = `<div class="card"><h2>Apartar números</h2>
+      <p style="margin:0">Números: <b>${nums.join(', ')}</b></p><p class="precio" style="margin:4px 0 0">${money(nums.length * r.valor)}</p>
+      <label for="fn">Nombre completo</label><input id="fn" maxlength="80" autocomplete="name">
+      <label for="fc">Celular (WhatsApp)</label><input id="fc" inputmode="tel" maxlength="20" autocomplete="tel" placeholder="3001234567">
+      <label class="chk"><input type="checkbox" id="fa"><span>Autorizo que el organizador use mi nombre y celular solo para esta rifa (Ley 1581 de 2012).</span></label>
+      <p class="mu">Tus números quedan apartados hasta que el organizador confirme tu pago.</p>
+      <div class="row"><button class="btn2" id="fx">Cancelar</button><button id="fok">Apartar</button></div></div>`;
+    document.body.appendChild(m);
+    m.addEventListener('click', e => { if (e.target === m) m.remove(); });
+    $('fx').onclick = () => m.remove();
+    $('fok').onclick = async () => {
+      const nombre = $('fn').value.trim().replace(/\s+/g, ' ');
+      const cel = $('fc').value.replace(/[^\d+]/g, '');
+      if (nombre.length < 3) return toast('Escribe tu nombre completo');
+      if (cel.replace(/\D/g, '').length < 7) return toast('Escribe un celular válido');
+      if (!$('fa').checked) return toast('Debes aceptar la autorización de datos');
+      const b = $('fok'); b.disabled = true; b.textContent = 'Apartando…';
+      const resRef = doc(collection(db, 'rifas', id, 'reservas'));
+      try {
+        await runTransaction(db, async tx => {
+          const s = await tx.get(ref); const d = s.data();
+          if (d.estado !== 'abierta') throw new Error('La rifa no está abierta');
+          const oc = d.ocupados || {}; const tom = nums.filter(k => oc[k]);
+          if (tom.length) throw new Error(`Ya los apartaron: ${tom.join(', ')}`);
+          if (nums.length > d.maxReserva) throw new Error(`Máximo ${d.maxReserva} números`);
+          const args = []; nums.forEach(k => args.push(new FieldPath('ocupados', k), true));
+          tx.update(ref, ...args);
+          tx.set(resRef, { nombre, celular: cel, numeros: nums, total: nums.length * d.valor, estado: 'pendiente', creada: serverTimestamp(), acepta: true });
+        });
+        guardarBoleta({ r: id, b: resRef.id, nums, titulo: r.titulo });
+        location.href = `${BASE}?r=${encodeURIComponent(id)}&b=${resRef.id}`;
+      } catch (e) {
+        b.disabled = false; b.textContent = 'Apartar';
+        toast(/permission/i.test(e.message) ? 'No se pudo apartar. Recarga e intenta de nuevo.' : e.message, 4000);
+      }
+    };
+  }
+}
+
+// ======================================================================
+// VISTA BOLETA: estado de la reserva del participante
+// ======================================================================
+function vistaBoleta(id, bid) {
+  let r, x;
+  main.innerHTML = '<p class="mu">Cargando boleta…</p>';
+  const link = `${BASE}?r=${encodeURIComponent(id)}&b=${encodeURIComponent(bid)}`;
+  const tablero = `${BASE}?r=${encodeURIComponent(id)}`;
+  const pintar = () => {
+    if (r === undefined || x === undefined) return;
+    if (!r) { main.innerHTML = '<div class="card"><h2>Rifa no encontrada</h2></div>'; return; }
+    color(r);
+    if (!x) {
+      main.innerHTML = hero(r) + `<div class="card"><h2>Reserva no disponible</h2><p>El organizador liberó esta reserva; esos números volvieron a quedar disponibles.</p><a class="btn" href="${tablero}">Ir al tablero</a></div>`;
+      return;
+    }
+    const ok = x.estado === 'pagado';
+    const msg = `Hola, aparté los números ${x.numeros.join(', ')} de la rifa "${r.titulo}" por ${money(x.total)}. Mi nombre es ${x.nombre}. Te envío el comprobante de pago.\nMi boleta: ${link}`;
+    main.innerHTML = hero(r) + avisoEstado(r) + `
+      <section class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">Tu boleta</h2>
+        <span class="pill ${ok ? 'p-ok' : 'p-warn'}" style="flex:0 0 auto">${ok ? 'PAGO CONFIRMADO' : 'PENDIENTE DE PAGO'}</span></div>
+        <div class="big" style="margin:10px 0">${esc(x.numeros.join(' · '))}</div>
+        <div>${esc(x.nombre)} · Total <b>${money(x.total)}</b></div><div class="mu">Apartada ${esc(fecha(x.creada))}</div></section>
+      ${ok ? `<section class="card"><b>✓ Tu pago fue confirmado.</b> Ya estás participando. ¡Suerte!</section>` : `
+      <section class="card"><h2>Cómo pagar</h2>
+        <ol style="padding-left:18px;margin:0 0 8px"><li>Transfiere <b>${money(x.total)}</b> a uno de estos medios.</li><li>Envía el comprobante al organizador por WhatsApp.</li><li>Espera la confirmación: esta página se actualiza sola.</li></ol>
+        ${pagosHTML(r)}
+        ${r.whatsapp ? `<a class="btn" style="width:100%;margin-top:8px" target="_blank" rel="noopener" href="${esc(wa(r.whatsapp, msg))}">Enviar comprobante por WhatsApp</a>` : ''}</section>`}
+      <section class="card"><p class="mu" style="margin-top:0">Guarda este link para consultar tu boleta:</p>
+        <div class="row"><button class="btn2 sm" data-copy="${esc(link)}">Copiar link de mi boleta</button><a class="btn btn2 sm" href="${tablero}">Ver tablero</a></div></section>`;
+  };
+  subs.push(onSnapshot(doc(db, 'rifas', id), s => { r = s.exists() ? s.data() : null; pintar(); }, () => { r = null; pintar(); }));
+  subs.push(onSnapshot(doc(db, 'rifas', id, 'reservas', bid), s => {
+    x = s.exists() ? { id: s.id, ...s.data() } : null;
+    if (x) guardarBoleta({ r: id, b: bid, nums: x.numeros, titulo: r?.titulo || '' });
+    pintar();
+  }, () => { x = null; pintar(); }));
+}
+
+// ======================================================================
+// PANEL DEL ORGANIZADOR
+// ======================================================================
+function vistaPanel() {
+  main.innerHTML = '<p class="mu">Cargando…</p>';
+  onAuthStateChanged(auth, async u => {
+    limpiar();
+    if (!u) {
+      main.innerHTML = `<section class="card"><h1>Rifas</h1>
+        <p>Panel para organizadores. Si te compartieron el link de una rifa, ábrelo directamente: no necesitas iniciar sesión para participar.</p>
+        <button id="lg">Entrar con Google</button></section>`;
+      $('lg').onclick = () => signInWithPopup(auth, new GoogleAuthProvider()).catch(e => toast('No se pudo iniciar sesión (' + e.code + '). Ábrelo en Chrome o Safari.', 5000));
+      return;
+    }
+    const mail = (u.email || '').toLowerCase();
+    let org = null;
+    try { const s = await getDoc(doc(db, 'organizadores', mail)); if (s.exists()) org = s.data(); } catch { }
+    if (!org) {
+      main.innerHTML = `<section class="card"><h2>Cuenta no autorizada</h2><p>La cuenta <b>${esc(mail)}</b> no tiene permiso para crear rifas. Pídele al administrador que la agregue.</p><button class="btn2" id="so">Salir</button></section>`;
+      $('so').onclick = () => signOut(auth); return;
+    }
+    if (P.get('r')) panelRifa(P.get('r'), u); else panelInicio(u, mail, org.admin === true);
+  });
+}
+
+async function panelInicio(u, mail, admin) {
+  color(null);
+  main.innerHTML = `<div class="row" style="justify-content:space-between;margin-bottom:12px"><div style="flex:3"><h1 style="margin:0">Mis rifas</h1><div class="mu">${esc(mail)}</div></div>
+    <button class="btn2 sm" id="so" style="flex:0 0 auto">Salir</button></div>
+    <button id="nueva" style="width:100%;margin-bottom:14px">+ Nueva rifa</button>
+    <div id="lista"><p class="mu">Cargando…</p></div><div id="adm"></div>`;
+  $('so').onclick = () => signOut(auth);
+  $('nueva').onclick = async () => {
+    $('nueva').disabled = true;
+    try {
+      const ref = await addDoc(collection(db, 'rifas'), {
+        owner: u.uid, ownerEmail: mail, titulo: 'Nueva rifa', premio: '', valor: 5000, loteria: '', fechaSorteo: '',
+        cifras: 2, maxReserva: 5, reglas: 'Si el número ganador no se vendió, el premio queda para el organizador.',
+        resolucion: '', whatsapp: '', color: COLOR, pagos: [], estado: 'borrador', ocupados: {}, resultado: null, creada: serverTimestamp()
+      });
+      location.href = `${BASE}?panel&r=${ref.id}`;
+    } catch (e) { toast('Error: ' + e.message, 4000); $('nueva').disabled = false; }
+  };
+  try {
+    const qs = await getDocs(query(collection(db, 'rifas'), where('owner', '==', u.uid)));
+    const l = qs.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (aFecha(b.creada) || 0) - (aFecha(a.creada) || 0));
+    $('lista').innerHTML = l.length ? l.map(x => `<a class="card" style="display:block;text-decoration:none;color:inherit" href="${BASE}?panel&r=${x.id}">
+      <div class="row" style="justify-content:space-between"><b style="flex:3">${esc(x.titulo)}</b>${pillEstado(x.estado)}</div>
+      <div class="mu">${Object.keys(x.ocupados || {}).length} de ${10 ** x.cifras} números ocupados · ${money(x.valor)}</div></a>`).join('')
+      : '<p class="mu">Aún no tienes rifas.</p>';
+  } catch (e) { $('lista').innerHTML = `<p class="mu">Error: ${esc(e.message)}</p>`; }
+  if (admin) panelAdmin(mail);
+}
+
+async function panelAdmin(mail) {
+  const box = $('adm');
+  const cargar = async () => {
+    const qs = await getDocs(collection(db, 'organizadores'));
+    box.innerHTML = `<section class="card"><h2>Organizadores autorizados</h2>
+      ${qs.docs.map(d => `<div class="item row" style="justify-content:space-between"><div style="flex:3"><b>${esc(d.data().nombre || '')}</b>
+        <div class="mu">${esc(d.id)}${d.data().admin ? ' · administrador' : ''}</div></div>
+        ${d.id === mail ? '' : `<button class="sm btnbad" style="flex:0 0 auto" data-quitar="${esc(d.id)}">Quitar</button>`}</div>`).join('')}
+      <h3>Agregar amigo</h3><label>Nombre</label><input id="an" maxlength="80">
+      <label>Correo de Google</label><input id="ae" type="email" placeholder="amigo@gmail.com">
+      <button id="aok" style="margin-top:10px">Agregar</button></section>`;
+    box.querySelectorAll('[data-quitar]').forEach(b => b.onclick = async () => {
+      if (!confirm(`¿Quitar a ${b.dataset.quitar}? Ya no podrá administrar sus rifas.`)) return;
+      try { await deleteDoc(doc(db, 'organizadores', b.dataset.quitar)); cargar(); } catch (e) { toast('Error: ' + e.message, 4000); }
+    });
+    $('aok').onclick = async () => {
+      const e = $('ae').value.trim().toLowerCase();
+      if (!/^[^@\s/]+@[^@\s/]+\.[^@\s/]+$/.test(e)) return toast('Correo no válido');
+      try { await setDoc(doc(db, 'organizadores', e), { nombre: $('an').value.trim(), admin: false, agregado: serverTimestamp() }); toast('Agregado ✓'); cargar(); }
+      catch (er) { toast('Error: ' + er.message, 4000); }
+    };
+  };
+  try { await cargar(); } catch (e) { box.innerHTML = `<p class="mu">Error: ${esc(e.message)}</p>`; }
+}
+
+function panelRifa(id, u) {
+  const ref = doc(db, 'rifas', id);
+  let r = null, res = [], resListo = false, listo = false, numLot = '';
+  const quitar = nums => nums.flatMap(k => [new FieldPath('ocupados', k), deleteField()]);
+  main.innerHTML = '<p class="mu">Cargando…</p>';
+
+  subs.push(onSnapshot(ref, s => {
+    if (!s.exists()) { main.innerHTML = `<div class="card"><h2>La rifa no existe</h2><a href="${BASE}">Volver</a></div>`; return; }
+    r = s.data();
+    if (r.owner !== u.uid) { main.innerHTML = `<div class="card"><h2>No eres el organizador de esta rifa</h2><a href="${BASE}">Volver</a></div>`; return; }
+    color(r);
+    if (!listo) { listo = true; armar(); formulario(); }
+    pintar();
+  }, e => toast(e.message, 4000)));
+  subs.push(onSnapshot(collection(db, 'rifas', id, 'reservas'), s => {
+    res = s.docs.map(d => ({ id: d.id, ...d.data() })); resListo = true; if (listo) pintar();
+  }, e => toast('Reservas: ' + e.message, 4000)));
+
+  function armar() {
+    const link = `${BASE}?r=${id}`;
+    main.innerHTML = `<a href="${BASE}" class="mu">← Mis rifas</a>
+      <h1 id="tt" style="margin:6px 0 12px"></h1>
+      <section class="card"><h2>Compartir</h2><input readonly value="${esc(link)}" onclick="this.select()">
+        <div class="row" style="margin-top:8px"><button class="sm" data-copy="${esc(link)}">Copiar link</button>
+        <a class="btn sm btn2" id="wsh" target="_blank" rel="noopener">WhatsApp</a>
+        <a class="btn sm btn2" href="${link}" target="_blank" rel="noopener">Ver como participante</a></div></section>
+      <section class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0;flex:3">Estado</h2><span id="pe" style="flex:0 0 auto"></span></div><div id="acc" style="margin-top:10px"></div></section>
+      <section class="card"><h2>Resumen</h2><div class="stats" id="st"></div></section>
+      <section class="card"><h2>Por confirmar <span class="mu" id="np"></span></h2>
+        <p class="mu" style="margin-top:-6px">Las más antiguas primero. Confirma solo cuando veas el dinero en tu cuenta.</p><div id="pend"></div></section>
+      <section class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0;flex:3">Pagados <span class="mu" id="npg"></span></h2>
+        <button class="sm btn2" id="csv" style="flex:0 0 auto">Exportar CSV</button></div>
+        <input id="bus" placeholder="Buscar nombre, celular o número" style="margin-top:10px"><div id="pag"></div></section>
+      <div id="huer"></div>
+      <section class="card" id="sorteo"></section>
+      <section class="card"><h2>Configuración</h2><div id="cfg"></div></section>
+      <section class="card"><h2>Eliminar rifa</h2><p class="mu">Borra la rifa y todas sus reservas. No se puede deshacer.</p><button class="btnbad sm" id="del">Eliminar rifa</button></section>`;
+    $('bus').oninput = pintar;
+    $('csv').onclick = exportar;
+    $('del').onclick = eliminar;
+    main.addEventListener('click', accion);
+  }
+
+  function pintar() {
+    if (!r || !listo) return;
+    const c = r.cifras, total = 10 ** c, oc = r.ocupados || {};
+    $('tt').textContent = r.titulo;
+    $('wsh').href = `https://wa.me/?text=${encodeURIComponent(`🎟️ ${r.titulo}\n🎁 ${r.premio}\n💵 ${money(r.valor)} por número\nEscoge tus números aquí: ${BASE}?r=${id}`)}`;
+    $('pe').innerHTML = pillEstado(r.estado);
+    const pend = res.filter(x => x.estado !== 'pagado').sort((a, b) => (aFecha(a.creada) || 0) - (aFecha(b.creada) || 0));
+    const pag = res.filter(x => x.estado === 'pagado').sort((a, b) => (aFecha(b.pagadoEn) || 0) - (aFecha(a.pagadoEn) || 0));
+    const nPend = pend.reduce((s, x) => s + x.numeros.length, 0), nPag = pag.reduce((s, x) => s + x.numeros.length, 0);
+
+    $('acc').innerHTML = {
+      borrador: `<p class="mu" style="margin-top:0">Configura la rifa abajo y luego abre las ventas.</p><button data-est="abierta">Abrir ventas</button>`,
+      abierta: `<p class="mu" style="margin-top:0">Los participantes pueden apartar números.</p><button data-est="cerrada">Cerrar ventas</button>`,
+      cerrada: `<p class="mu" style="margin-top:0">Nadie puede apartar números. Ya puedes registrar el resultado.</p><button class="btn2" data-est="abierta">Reabrir ventas</button>`,
+      sorteada: `<p class="mu" style="margin-top:0">Resultado publicado.</p><button class="btn2" data-est="deshacer">Deshacer resultado</button>`
+    }[r.estado] || '';
+
+    $('st').innerHTML = [
+      ['Pagados', `${nPag} núm.`], ['Recaudado', money(pag.reduce((s, x) => s + x.total, 0))],
+      ['Por confirmar', `${nPend} núm.`], ['Pendiente', money(pend.reduce((s, x) => s + x.total, 0))],
+      ['Libres', `${Math.max(0, total - Object.keys(oc).length)} de ${total}`]
+    ].map(([k, v]) => `<div class="stat"><span class="mu">${k}</span><b>${v}</b></div>`).join('');
+
+    $('np').textContent = `(${pend.length})`; $('npg').textContent = `(${pag.length})`;
+    $('pend').innerHTML = pend.length ? pend.map(x => item(x, true)).join('') : '<p class="mu">No hay reservas pendientes.</p>';
+    const q = ($('bus').value || '').toLowerCase().trim();
+    const pf = q ? pag.filter(x => `${x.nombre} ${x.celular} ${x.numeros.join(' ')}`.toLowerCase().includes(q)) : pag;
+    $('pag').innerHTML = pf.length ? pf.map(x => item(x, false)).join('') : '<p class="mu">Sin resultados.</p>';
+
+    const hu = huerfanos();
+    $('huer').innerHTML = hu.length ? `<section class="card"><h2>Números bloqueados sin reserva</h2>
+      <p class="mu">Aparecen ocupados pero no tienen comprador asociado (error de conexión o uso indebido del link).</p>
+      <b>${esc(hu.join(', '))}</b><div style="margin-top:8px"><button class="sm btnbad" data-huer="1">Liberarlos</button></div></section>` : '';
+    pintarSorteo(pend, pag);
+  }
+  function huerfanos() {
+    if (!resListo) return [];
+    const usados = new Set(res.flatMap(x => x.numeros));
+    return Object.keys(r.ocupados || {}).filter(k => !usados.has(k)).sort();
+  }
+  function item(x, pendiente) {
+    const msg = pendiente
+      ? `Hola ${x.nombre}, te escribo por la rifa "${r.titulo}". Tienes apartados los números ${x.numeros.join(', ')} (${money(x.total)}).`
+      : `Hola ${x.nombre}, confirmé tu pago de la rifa "${r.titulo}". Tus números: ${x.numeros.join(', ')}. ¡Suerte!`;
+    return `<div class="item"><div class="row" style="justify-content:space-between"><b style="flex:3">${esc(x.nombre)}</b>
+      <span class="mu" style="flex:0 0 auto">${esc(hace(pendiente ? x.creada : x.pagadoEn))}</span></div>
+      <div>Números: <b>${esc(x.numeros.join(', '))}</b> · ${money(x.total)}</div>
+      <div><a href="${esc(wa(x.celular, msg))}" target="_blank" rel="noopener">${esc(x.celular)} · WhatsApp</a></div>
+      <div class="row" style="margin-top:8px">${pendiente
+        ? `<button class="sm" data-conf="${esc(x.id)}">Confirmar pago</button>`
+        : `<button class="sm btn2" data-desc="${esc(x.id)}">Quitar confirmación</button>`}
+        <button class="sm btnbad" data-lib="${esc(x.id)}">Liberar</button></div></div>`;
+  }
+
+  async function accion(e) {
+    const t = e.target.closest('button'); if (!t) return;
+    const d = t.dataset;
+    try {
+      if (d.est) await cambiarEstado(d.est);
+      else if (d.conf) { await updateDoc(doc(db, 'rifas', id, 'reservas', d.conf), { estado: 'pagado', pagadoEn: serverTimestamp() }); toast('Pago confirmado ✓'); }
+      else if (d.desc) {
+        if (!confirm('¿Quitar la confirmación de pago?')) return;
+        await updateDoc(doc(db, 'rifas', id, 'reservas', d.desc), { estado: 'pendiente', pagadoEn: deleteField() });
+      }
+      else if (d.lib) {
+        const x = res.find(y => y.id === d.lib); if (!x) return;
+        if (!confirm(`¿Liberar los números ${x.numeros.join(', ')} de ${x.nombre}? Volverán a estar disponibles.`)) return;
+        const b = writeBatch(db); b.update(ref, ...quitar(x.numeros)); b.delete(doc(db, 'rifas', id, 'reservas', x.id)); await b.commit();
+        toast('Números liberados');
+      }
+      else if (d.huer) {
+        const hu = huerfanos(); if (!hu.length || !confirm(`¿Liberar ${hu.join(', ')}?`)) return;
+        await updateDoc(ref, ...quitar(hu)); toast('Liberados');
+      }
+      else if (d.sort) await guardarSorteo();
+    } catch (err) { toast('Error: ' + err.message, 4000); }
+  }
+
+  async function cambiarEstado(est) {
+    if (est === 'abierta' && r.estado === 'borrador') {
+      const f = [];
+      if (!r.premio) f.push('premio'); if (!r.loteria) f.push('lotería');
+      if (!r.pagos?.length) f.push('medios de pago'); if (!r.whatsapp) f.push('WhatsApp');
+      if (f.length) return toast('Falta configurar y guardar: ' + f.join(', '), 4500);
+    }
+    if (est === 'cerrada' && !confirm('¿Cerrar ventas? Nadie podrá apartar más números.')) return;
+    if (est === 'deshacer') {
+      if (!confirm('¿Deshacer el resultado publicado?')) return;
+      await updateDoc(ref, { estado: 'cerrada', resultado: null }); return;
+    }
+    await updateDoc(ref, { estado: est });
+  }
+
+  // ---------- sorteo ----------
+  function pintarSorteo(pend, pag) {
+    const box = $('sorteo');
+    if (r.estado === 'sorteada' && r.resultado) {
+      const x = r.resultado; const w = pag.find(y => y.numeros.includes(x.ganador));
+      box.innerHTML = `<h2>Resultado</h2><div class="big">${esc(x.ganador)}</div><p>La lotería jugó ${esc(x.numeroLoteria)}. ${w
+        ? `Ganador: <b>${esc(w.nombre)}</b> · <a href="${esc(wa(w.celular, `¡Hola ${w.nombre}! Ganaste la rifa "${r.titulo}" con el número ${x.ganador}.`))}" target="_blank" rel="noopener">${esc(w.celular)}</a>`
+        : 'No se vendió: el premio queda para el organizador.'}</p>`;
+      return;
+    }
+    if (r.estado !== 'cerrada') { box.innerHTML = `<h2>Sorteo</h2><p class="mu">Cierra las ventas para registrar el resultado de la lotería.</p>`; return; }
+    box.innerHTML = `<h2>Registrar resultado</h2>
+      ${pend.length ? `<p style="color:var(--warn)"><b>Hay ${pend.length} reserva(s) sin confirmar.</b> Confírmalas o libéralas antes del sorteo.</p>` : ''}
+      <label>Número del premio mayor de la ${esc(r.loteria)}</label><input id="lot" inputmode="numeric" value="${esc(numLot)}" placeholder="Ej: 4507">
+      <div id="prev" class="mu" style="margin:8px 0"></div><button data-sort="1">Publicar resultado</button>`;
+    const prev = () => { numLot = $('lot').value.replace(/\D/g, ''); const g = ganador(); $('prev').innerHTML = g ? vistaGanador(g) : ''; };
+    $('lot').oninput = prev; prev();
+  }
+  const ganador = () => numLot.length >= r.cifras ? numLot.slice(-r.cifras) : null;
+  const dueno = g => res.find(y => y.numeros.includes(g)) || null;
+  function vistaGanador(g) {
+    const x = dueno(g);
+    return `Número ganador: <b>${g}</b> — ${!x ? 'no se vendió (el premio queda para el organizador)'
+      : x.estado === 'pagado' ? `vendido a <b>${esc(x.nombre)}</b>`
+        : `<span style="color:var(--bad)">apartado por ${esc(x.nombre)} pero SIN pago confirmado</span>`}`;
+  }
+  async function guardarSorteo() {
+    const g = ganador(); if (!g) return toast(`Escribe al menos ${r.cifras} cifras`);
+    const x = dueno(g);
+    if (x && x.estado !== 'pagado') return toast('Ese número está apartado sin pago confirmado. Confírmalo o libéralo primero.', 4500);
+    if (!confirm(`¿Publicar como ganador el ${g}?`)) return;
+    await updateDoc(ref, { estado: 'sorteada', resultado: { numeroLoteria: numLot, ganador: g, vendido: !!x, fecha: serverTimestamp() } });
+  }
+
+  // ---------- configuración ----------
+  function formulario() {
+    const f = $('cfg');
+    const bloqueado = Object.keys(r.ocupados || {}).length > 0;
+    f.innerHTML = `
+      <label>Título</label><input id="c_tit" maxlength="80" value="${esc(r.titulo)}">
+      <label>Premio</label><input id="c_pre" maxlength="140" value="${esc(r.premio)}" placeholder="Ej: Moto AKT 125 / $1.000.000 en efectivo">
+      <div class="row"><div><label>Valor por número (COP)</label><input id="c_val" type="number" min="100" step="100" value="${r.valor}"></div>
+        <div><label>Máx. números por reserva</label><input id="c_max" type="number" min="1" max="100" value="${r.maxReserva}"></div></div>
+      <label>Lotería con la que juega</label><input id="c_lot" maxlength="60" value="${esc(r.loteria)}" placeholder="Ej: Lotería del Cauca">
+      <div class="row"><div><label>Cifras</label><select id="c_cif" ${bloqueado ? 'disabled' : ''}>${[2, 3, 4].map(n =>
+        `<option value="${n}" ${r.cifras === n ? 'selected' : ''}>${n} últimas (${pad(0, n)}–${'9'.repeat(n)})</option>`).join('')}</select></div>
+        <div><label>Fecha y hora del sorteo</label><input id="c_fec" type="datetime-local" value="${esc(r.fechaSorteo)}"></div></div>
+      ${bloqueado ? '<p class="mu">Las cifras ya no se pueden cambiar porque hay números apartados.</p>' : ''}
+      <label>WhatsApp del organizador</label><input id="c_wa" inputmode="tel" value="${esc(r.whatsapp)}" placeholder="3001234567">
+      <h3>Medios de pago</h3><div id="c_pagos"></div><button class="btn2 sm" id="c_add" type="button">+ Agregar medio de pago</button>
+      <label>Reglas / condiciones</label><textarea id="c_reg" rows="4" maxlength="1500">${esc(r.reglas)}</textarea>
+      <label>N.º de resolución o autorización (opcional)</label><input id="c_res" maxlength="120" value="${esc(r.resolucion)}">
+      <label>Color</label><input id="c_col" type="color" value="${esc(r.color || COLOR)}" style="height:44px;padding:4px">
+      <button id="c_ok" style="width:100%;margin-top:14px">Guardar cambios</button>`;
+    const pagos = $('c_pagos');
+    const fila = (p = { tipo: 'Llave Bre-B', dato: '', titular: '' }) => {
+      const d = document.createElement('div'); d.className = 'pago'; d.style.display = 'block';
+      d.innerHTML = `<div class="row"><select class="p_t">${TIPOS_PAGO.map(t => `<option ${t === p.tipo ? 'selected' : ''}>${t}</option>`).join('')}</select>
+        <button type="button" class="sm btnbad p_x" style="flex:0 0 auto">✕</button></div>
+        <input class="p_d" placeholder="Llave, número o cuenta" value="${esc(p.dato)}" style="margin-top:6px">
+        <input class="p_n" placeholder="Nombre del titular" value="${esc(p.titular)}" style="margin-top:6px">`;
+      d.querySelector('.p_x').onclick = () => d.remove();
+      pagos.appendChild(d);
+    };
+    (r.pagos || []).forEach(p => fila(p));
+    $('c_add').onclick = () => fila();
+    $('c_ok').onclick = async () => {
+      const valor = Math.round(+$('c_val').value), max = Math.round(+$('c_max').value), cif = +$('c_cif').value;
+      if (!(valor > 0)) return toast('Valor por número no válido');
+      if (!(max >= 1 && max <= 100)) return toast('Máximo por reserva: entre 1 y 100');
+      if (cif !== r.cifras && Object.keys(r.ocupados || {}).length) return toast('No puedes cambiar las cifras con números apartados');
+      const ps = [...pagos.children].map(d => ({ tipo: d.querySelector('.p_t').value, dato: d.querySelector('.p_d').value.trim(), titular: d.querySelector('.p_n').value.trim() })).filter(p => p.dato);
+      const b = $('c_ok'); b.disabled = true;
+      try {
+        await updateDoc(ref, {
+          titulo: $('c_tit').value.trim() || 'Rifa', premio: $('c_pre').value.trim(), valor, maxReserva: max,
+          loteria: $('c_lot').value.trim(), cifras: cif, fechaSorteo: $('c_fec').value, whatsapp: $('c_wa').value.trim(),
+          pagos: ps, reglas: $('c_reg').value.trim(), resolucion: $('c_res').value.trim(), color: $('c_col').value
+        });
+        toast('Guardado ✓');
+      } catch (e) { toast('Error: ' + e.message, 4000); }
+      finally { b.disabled = false; }
+    };
+  }
+
+  function exportar() {
+    const cel = v => { const s = String(v ?? ''); return '"' + (/^[=+\-@]/.test(s) ? "'" + s : s).replace(/"/g, '""') + '"'; };
+    const filas = [['Estado', 'Nombre', 'Celular', 'Números', 'Total', 'Apartado', 'Pagado']]
+      .concat(res.map(x => [x.estado, x.nombre, x.celular, x.numeros.join(' '), x.total, fecha(x.creada), fecha(x.pagadoEn)]));
+    const blob = new Blob(['﻿' + filas.map(f => f.map(cel).join(';')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = `rifa-${(r.titulo || 'rifa').replace(/[^\w]+/g, '-')}.csv`; a.click();
+  }
+
+  async function eliminar() {
+    if (prompt('Escribe ELIMINAR para borrar la rifa y todas sus reservas') !== 'ELIMINAR') return;
+    const lista = res.slice();
+    try {
+      limpiar();
+      const b = writeBatch(db);
+      lista.forEach(x => b.delete(doc(db, 'rifas', id, 'reservas', x.id)));
+      b.delete(ref); await b.commit();
+      location.href = BASE;
+    } catch (e) { toast('Error: ' + e.message, 4000); }
+  }
+}
+
+// ---------- enrutador ----------
+const rid = P.get('r'), bid = P.get('b');
+if (rid && bid) vistaBoleta(rid, bid);
+else if (rid && !P.has('panel')) vistaPublica(rid);
+else vistaPanel();
+</script>
+</body>
+</html>

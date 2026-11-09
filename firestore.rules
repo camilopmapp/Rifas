@@ -1,0 +1,80 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- Organizadores autorizados ----------
+    function signedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+    function myEmail() { return request.auth.token.email.lower(); }
+    function orgPath() { return /databases/$(database)/documents/organizadores/$(myEmail()); }
+    function isOrg() { return signedIn() && exists(orgPath()); }
+    function isAdmin() { return isOrg() && get(orgPath()).data.admin == true; }
+
+    match /organizadores/{mail} {
+      allow get: if signedIn() && (mail == myEmail() || isAdmin());
+      allow list: if isAdmin();
+      allow create, update: if isAdmin()
+        && request.resource.data.keys().hasOnly(['nombre', 'admin', 'agregado'])
+        && request.resource.data.admin is bool;
+      allow delete: if isAdmin() && mail != myEmail();
+    }
+
+    // ---------- Rifas (datos públicos, sin datos personales) ----------
+    match /rifas/{rifaId} {
+      function isOwner() { return isOrg() && resource.data.owner == request.auth.uid; }
+
+      // Un participante (sin sesión) solo puede AGREGAR números libres al mapa "ocupados"
+      function reservaPublica() {
+        let d = request.resource.data.ocupados.diff(resource.data.ocupados);
+        return resource.data.estado == 'abierta'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ocupados'])
+          && d.removedKeys().size() == 0
+          && d.changedKeys().size() == 0
+          && d.addedKeys().size() > 0
+          && d.addedKeys().size() <= resource.data.maxReserva;
+      }
+
+      allow get: if true;
+      allow list: if isOrg();
+      allow create: if isOrg()
+        && request.resource.data.owner == request.auth.uid
+        && request.resource.data.estado == 'borrador'
+        && request.resource.data.ocupados.size() == 0;
+      allow update: if (isOwner() && request.resource.data.owner == resource.data.owner)
+        || reservaPublica();
+      allow delete: if isOwner();
+
+      // ---------- Reservas (privadas: nombre y celular) ----------
+      match /reservas/{resId} {
+        function rifa() { return get(/databases/$(database)/documents/rifas/$(rifaId)).data; }
+        function rifaDespues() { return getAfter(/databases/$(database)/documents/rifas/$(rifaId)).data; }
+        function esDueno() { return isOrg() && rifa().owner == request.auth.uid; }
+
+        function valida(n, r, r2) {
+          return r.estado == 'abierta'
+            && n.keys().hasOnly(['nombre', 'celular', 'numeros', 'total', 'estado', 'creada', 'acepta'])
+            && n.estado == 'pendiente'
+            && n.acepta == true
+            && n.creada == request.time
+            && n.nombre is string && n.nombre.size() >= 3 && n.nombre.size() <= 80
+            && n.celular is string && n.celular.size() >= 7 && n.celular.size() <= 20
+            && n.numeros is list && n.numeros.size() > 0 && n.numeros.size() <= r.maxReserva
+            && n.total == n.numeros.size() * r.valor
+            && !r.ocupados.keys().hasAny(n.numeros)
+            && r2.ocupados.keys().hasAll(n.numeros);
+        }
+
+        // "get" con el ID exacto (solo lo tiene el participante: link de su boleta)
+        allow get: if true;
+        // Solo el organizador puede ver la lista completa
+        allow list: if esDueno();
+        allow create: if valida(request.resource.data, rifa(), rifaDespues());
+        allow update: if esDueno()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado', 'pagadoEn'])
+          && request.resource.data.estado in ['pendiente', 'pagado'];
+        allow delete: if esDueno();
+      }
+    }
+  }
+}
