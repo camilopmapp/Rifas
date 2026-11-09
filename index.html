@@ -13,8 +13,23 @@ a{color:var(--c)}
 .card{background:var(--card);border:1px solid var(--ln);border-radius:14px;padding:16px;margin-bottom:14px}
 h1{font-size:1.5rem;margin:0 0 6px}h2{font-size:1.15rem;margin:0 0 10px}h3{font-size:1rem;margin:16px 0 8px}
 .mu{color:var(--mu);font-size:.9rem}
-.hero{background:var(--c);color:#fff;border:none}
-.hero .mu{color:rgba(255,255,255,.88)}
+.hero{position:relative;overflow:hidden;text-align:center;color:#fff;border:none;padding:22px 20px 20px;border-radius:20px;
+  background:radial-gradient(circle at 15% 0%,rgba(255,255,255,.22),transparent 45%),linear-gradient(140deg,color-mix(in srgb,var(--c) 80%,#fff),var(--c) 50%,color-mix(in srgb,var(--c) 70%,#000));
+  box-shadow:0 10px 28px color-mix(in srgb,var(--c) 35%,transparent)}
+.hero h1{font-size:1.65rem;line-height:1.15;margin:6px 0 14px;letter-spacing:-.3px}
+.hero .tag{display:inline-block;font-size:.72rem;font-weight:800;letter-spacing:2.5px;padding:4px 12px;border-radius:99px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.28)}
+.hero .premio{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);border-radius:14px;padding:10px 12px;margin:0 auto;max-width:440px}
+.hero .premio small{display:block;font-size:.7rem;letter-spacing:2px;font-weight:700;opacity:.8}
+.hero .premio b{font-size:1.2rem}
+.hero .corte{position:relative;border-top:2px dashed rgba(255,255,255,.35);margin:18px -20px 14px}
+.hero .corte::before,.hero .corte::after{content:"";position:absolute;top:-13px;width:24px;height:24px;border-radius:50%;background:var(--bg)}
+.hero .corte::before{left:-12px}.hero .corte::after{right:-12px}
+.hero .valor{font-size:2rem;font-weight:800;line-height:1;letter-spacing:-.5px}
+.hero .valor span{display:block;font-size:.8rem;font-weight:500;opacity:.85;letter-spacing:0;margin-top:4px}
+.hero .chips{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;margin-top:14px}
+.hero .chips span{font-size:.82rem;padding:5px 11px;border-radius:99px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.18)}
+.hero .mu{color:rgba(255,255,255,.85);font-size:.8rem;margin-top:10px}
+.aviso{text-align:center;font-weight:600}
 .precio{font-size:1.3rem;font-weight:700}
 .grid{display:grid;grid-template-columns:repeat(10,1fr);gap:5px}
 .n{aspect-ratio:1;border:1px solid var(--ln);border-radius:8px;background:#fff;font-weight:600;font-size:.95rem;cursor:pointer;padding:0;color:var(--tx);font-variant-numeric:tabular-nums}
@@ -106,18 +121,25 @@ document.addEventListener('click', e => { const b = e.target.closest('[data-copy
 
 // ---------- piezas compartidas ----------
 function hero(r) {
-  const fs = r.fechaSorteo ? fecha(r.fechaSorteo) : '';
+  const d = r.fechaSorteo ? new Date(r.fechaSorteo) : null;
+  const fs = d && !isNaN(d) ? d.toLocaleString('es-CO', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
   return `<section class="card hero">
+    <span class="tag">🎟️ RIFA</span>
     <h1>${esc(r.titulo)}</h1>
-    ${r.premio ? `<div style="font-size:1.05rem">🎁 <b>${esc(r.premio)}</b></div>` : ''}
-    <div class="precio" style="margin:6px 0">${money(r.valor)} <span style="font-weight:400;font-size:.9rem">por número</span></div>
-    <div class="mu">Juega con las ${r.cifras} últimas cifras del premio mayor de la ${esc(r.loteria || 'lotería')}${fs ? ' · ' + esc(fs) : ''}</div>
+    ${r.premio ? `<div class="premio"><small>PREMIO</small><b>🎁 ${esc(r.premio)}</b></div>` : ''}
+    <div class="corte"></div>
+    <div class="valor">${money(r.valor)}<span>por número</span></div>
+    <div class="chips">
+      <span>🎰 ${esc(r.loteria || 'Lotería por definir')}</span>
+      ${fs ? `<span>📅 ${esc(fs)}</span>` : ''}
+      <span>🔢 ${r.cifras} últimas cifras</span>
+    </div>
     ${r.resolucion ? `<div class="mu">Autorización: ${esc(r.resolucion)}</div>` : ''}
   </section>`;
 }
 function avisoEstado(r) {
-  if (r.estado === 'borrador') return `<div class="card"><b>Esta rifa todavía no está abierta.</b></div>`;
-  if (r.estado === 'cerrada') return `<div class="card"><b>Ventas cerradas.</b> <span class="mu">Esperando el sorteo.</span></div>`;
+  if (r.estado === 'borrador') return `<div class="card aviso">⏳ Esta rifa todavía no está abierta.</div>`;
+  if (r.estado === 'cerrada') return `<div class="card aviso">🔒 Ventas cerradas · esperando el sorteo</div>`;
   if (r.estado === 'sorteada' && r.resultado) {
     const x = r.resultado;
     return `<div class="card" style="text-align:center"><div class="mu">La ${esc(r.loteria)} jugó <b>${esc(x.numeroLoteria)}</b></div>
