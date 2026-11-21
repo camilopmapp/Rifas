@@ -205,9 +205,28 @@ function vistaPublica(id) {
       else { if (sel.size >= r.maxReserva) { toast(`Máximo ${r.maxReserva} números por reserva`); return; } sel.add(k); }
       b.classList.toggle('sel', sel.has(k)); barra();
     });
+    cargarMisBoletas();
+  }
+  // Consulta cada boleta guardada: muestra su estado real y olvida las que el organizador liberó
+  async function cargarMisBoletas() {
     const mis = misBoletas().filter(x => x.r === id);
-    if (mis.length) $('mis').innerHTML = `<section class="card"><h2>Mis boletas en este celular</h2>${mis.map(x =>
-      `<div class="item"><a href="${BASE}?r=${encodeURIComponent(id)}&b=${encodeURIComponent(x.b)}">Números ${esc((x.nums || []).join(', '))}</a></div>`).join('')}</section>`;
+    if (!mis.length) return;
+    const res = await Promise.all(mis.map(async x => {
+      try { const s = await getDoc(doc(db, 'rifas', id, 'reservas', x.b)); return s.exists() ? { ...x, d: s.data() } : { ...x, liberada: true }; }
+      catch { return { ...x, error: true }; }
+    }));
+    const liberadas = new Set(res.filter(x => x.liberada).map(x => x.b));
+    if (liberadas.size) try { localStorage.setItem(LS, JSON.stringify(misBoletas().filter(x => !liberadas.has(x.b)))); } catch { }
+    const vivas = res.filter(x => !x.liberada);
+    if (!vivas.length) { $('mis').innerHTML = ''; return; }
+    $('mis').innerHTML = `<section class="card"><h2>Mis boletas en este celular</h2>${vivas.map(x => {
+      const nums = x.d ? x.d.numeros : (x.nums || []);
+      const pill = !x.d ? '' : x.d.estado === 'pagado'
+        ? '<span class="pill p-ok" style="flex:0 0 auto">✅ Pagada</span>'
+        : '<span class="pill p-warn" style="flex:0 0 auto">⏳ Pendiente</span>';
+      return `<a class="item row" style="justify-content:space-between;text-decoration:none;color:inherit" href="${linkBoleta(id, x.b)}">
+        <span style="flex:3">Números <b>${esc(nums.join(', '))}</b>${x.d ? ` · ${money(x.d.total)}` : ''}</span>${pill}</a>`;
+    }).join('')}</section>`;
   }
   function pintarBloques() {
     const c = r.cifras;
