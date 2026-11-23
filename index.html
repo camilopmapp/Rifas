@@ -267,7 +267,6 @@ function vistaPublica(id) {
       <p style="margin:0">Números: <b>${nums.join(', ')}</b></p><p class="precio" style="margin:4px 0 0">${money(nums.length * r.valor)}</p>
       <label for="fn">Nombre completo</label><input id="fn" maxlength="80" autocomplete="name">
       <label for="fc">Celular (WhatsApp)</label><input id="fc" inputmode="tel" maxlength="20" autocomplete="tel" placeholder="3001234567">
-      <label class="chk"><input type="checkbox" id="fa"><span>Autorizo que el organizador use mi nombre y celular solo para esta rifa (Ley 1581 de 2012).</span></label>
       <p class="mu">Tus números quedan apartados hasta que el organizador confirme tu pago.</p>
       <div class="row"><button class="btn2" id="fx">Cancelar</button><button id="fok">Apartar</button></div></div>`;
     document.body.appendChild(m);
@@ -278,7 +277,6 @@ function vistaPublica(id) {
       const cel = $('fc').value.replace(/[^\d+]/g, '');
       if (nombre.length < 3) return toast('Escribe tu nombre completo');
       if (cel.replace(/\D/g, '').length < 7) return toast('Escribe un celular válido');
-      if (!$('fa').checked) return toast('Debes aceptar la autorización de datos');
       const b = $('fok'); b.disabled = true; b.textContent = 'Apartando…';
       const resRef = doc(collection(db, 'rifas', id, 'reservas'));
       try {
@@ -290,7 +288,7 @@ function vistaPublica(id) {
           if (nums.length > d.maxReserva) throw new Error(`Máximo ${d.maxReserva} números`);
           const args = []; nums.forEach(k => args.push(new FieldPath('ocupados', k), true));
           tx.update(ref, ...args);
-          tx.set(resRef, { nombre, celular: cel, numeros: nums, total: nums.length * d.valor, estado: 'pendiente', creada: serverTimestamp(), acepta: true });
+          tx.set(resRef, { nombre, celular: cel, numeros: nums, total: nums.length * d.valor, estado: 'pendiente', creada: serverTimestamp() });
         });
         guardarBoleta({ r: id, b: resRef.id, nums, titulo: r.titulo });
         const lb = linkBoleta(id, resRef.id);

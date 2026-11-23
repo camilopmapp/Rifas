@@ -55,7 +55,6 @@ service cloud.firestore {
           return r.estado == 'abierta'
             && n.keys().hasOnly(['nombre', 'celular', 'numeros', 'total', 'estado', 'creada', 'acepta'])
             && n.estado == 'pendiente'
-            && n.acepta == true
             && n.creada == request.time
             && n.nombre is string && n.nombre.size() >= 3 && n.nombre.size() <= 80
             && n.celular is string && n.celular.size() >= 7 && n.celular.size() <= 20
