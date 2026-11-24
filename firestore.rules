@@ -69,9 +69,14 @@ service cloud.firestore {
         // Solo el organizador puede ver la lista completa
         allow list: if esDueno();
         allow create: if valida(request.resource.data, rifa(), rifaDespues());
+        // El organizador puede cambiar el estado del pago y corregir nombre/celular
         allow update: if esDueno()
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado', 'pagadoEn'])
-          && request.resource.data.estado in ['pendiente', 'pagado'];
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado', 'pagadoEn', 'nombre', 'celular'])
+          && request.resource.data.estado in ['pendiente', 'pagado']
+          && request.resource.data.nombre is string
+          && request.resource.data.nombre.size() >= 3 && request.resource.data.nombre.size() <= 80
+          && request.resource.data.celular is string
+          && request.resource.data.celular.size() >= 7 && request.resource.data.celular.size() <= 20;
         allow delete: if esDueno();
       }
     }

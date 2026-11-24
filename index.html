@@ -530,9 +530,20 @@ function panelRifa(id, u) {
   const esVencida = x => x.estado !== 'pagado' && aFecha(x.creada) && (Date.now() - aFecha(x.creada)) > horasVence() * 3600000;
   const vencidas = pend => pend.filter(esVencida);
   function item(x, pendiente) {
+    const nom = String(x.nombre || '').trim().split(/\s+/)[0] || '';
+    const lb = linkBoleta(id, x.id);
+    const d = r.fechaSorteo ? new Date(r.fechaSorteo) : null;
+    const fs = d && !isNaN(d) ? d.toLocaleDateString('es-CO', { day: 'numeric', month: 'short' }) : '';
+    const medios = (r.pagos || []).map(p => `• ${p.tipo}: *${p.dato}*${p.titular ? ` (${p.titular})` : ''}`).join('\n');
     const msg = pendiente
-      ? `Hola ${x.nombre}, te escribo por la rifa "${r.titulo}". Tienes apartados los números ${x.numeros.join(', ')} (${money(x.total)}).`
-      : `Hola ${x.nombre}, confirmé tu pago de la rifa "${r.titulo}". Tus números: ${x.numeros.join(', ')}. ¡Suerte!`;
+      ? `¡Hola ${nom}! 👋😊\nGracias por participar en la *${r.titulo}* 🎟️\n\n` +
+        `🔢 Tus números: *${x.numeros.join(', ')}*\n💵 Total a pagar: *${money(x.total)}*\n\n` +
+        (medios ? `💳 *Puedes pagar a:*\n${medios}\n\n` : '') +
+        `📸 Cuando pagues, envíame la captura del comprobante por aquí.\n🧾 Tu boleta: ${lb}\n\n¡Mucha suerte! 🍀🎉`
+      : `¡Hola ${nom}! ✅ Recibí tu pago de *${money(x.total)}*.\n🎟️ ${r.titulo}\n` +
+        `🔢 Tus números *${x.numeros.join(', ')}* ya están confirmados.\n` +
+        (r.loteria ? `🎰 Juegas con la ${r.loteria}${fs ? ` el ${fs}` : ''}.\n` : '') +
+        `🧾 Tu boleta: ${lb}\n\n¡Mucha suerte! 🍀`;
     return `<div class="item"><div class="row" style="justify-content:space-between"><b style="flex:3">${esc(x.nombre)}</b>
       ${pendiente && esVencida(x) ? '<span class="pill p-bad" style="flex:0 0 auto">⌛ Vencida</span>' : ''}
       <span class="mu" style="flex:0 0 auto">${esc(hace(pendiente ? x.creada : x.pagadoEn))}</span></div>
@@ -541,6 +552,7 @@ function panelRifa(id, u) {
       <div class="row" style="margin-top:8px">${pendiente
         ? `<button class="sm" data-conf="${esc(x.id)}">Confirmar pago</button>`
         : `<button class="sm btn2" data-desc="${esc(x.id)}">Quitar confirmación</button>`}
+        <button class="sm btn2" style="flex:0 0 auto" data-edit="${esc(x.id)}">✏️</button>
         <button class="sm btnbad" data-lib="${esc(x.id)}">Liberar</button></div></div>`;
   }
 
@@ -564,6 +576,7 @@ function panelRifa(id, u) {
         const hu = huerfanos(); if (!hu.length || !confirm(`¿Liberar ${hu.join(', ')}?`)) return;
         await updateDoc(ref, ...quitar(hu)); toast('Liberados');
       }
+      else if (d.edit) editar(res.find(y => y.id === d.edit));
       else if (d.venc) {
         const v = vencidas(res.filter(x => x.estado !== 'pagado'));
         if (!v.length) return;
@@ -575,6 +588,27 @@ function panelRifa(id, u) {
       }
       else if (d.sort) await guardarSorteo();
     } catch (err) { toast('Error: ' + err.message, 4000); }
+  }
+
+  function editar(x) {
+    if (!x) return;
+    const m = document.createElement('div'); m.className = 'modal';
+    m.innerHTML = `<div class="card"><h2>Editar participante</h2>
+      <p class="mu" style="margin:0">Números: <b>${esc(x.numeros.join(', '))}</b></p>
+      <label for="en">Nombre</label><input id="en" maxlength="80" value="${esc(x.nombre)}">
+      <label for="ec">Celular</label><input id="ec" inputmode="tel" maxlength="20" value="${esc(x.celular)}">
+      <div class="row" style="margin-top:14px"><button class="btn2" id="ex">Cancelar</button><button id="eok">Guardar</button></div></div>`;
+    document.body.appendChild(m);
+    m.addEventListener('click', e => { if (e.target === m) m.remove(); });
+    $('ex').onclick = () => m.remove();
+    $('eok').onclick = async () => {
+      const nombre = $('en').value.trim().replace(/\s+/g, ' '), celular = $('ec').value.replace(/[^\d+]/g, '');
+      if (nombre.length < 3) return toast('Nombre muy corto');
+      if (celular.replace(/\D/g, '').length < 7) return toast('Celular no válido');
+      $('eok').disabled = true;
+      try { await updateDoc(doc(db, 'rifas', id, 'reservas', x.id), { nombre, celular }); toast('Datos actualizados ✓'); m.remove(); }
+      catch (e) { $('eok').disabled = false; toast(/permission/i.test(e.message) ? 'Sin permiso: publica primero las reglas nuevas en Firebase.' : 'Error: ' + e.message, 5000); }
+    };
   }
 
   async function cambiarEstado(est) {
