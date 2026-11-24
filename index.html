@@ -58,6 +58,7 @@ input,select,textarea{width:100%;padding:10px;border:1px solid var(--ln);border-
 .modal .card{width:100%;max-width:520px;margin:0;border-radius:16px 16px 0 0;max-height:92vh;overflow:auto}
 .toast{position:fixed;top:14px;left:50%;transform:translateX(-50%);background:#1c1917;color:#fff;padding:10px 16px;border-radius:10px;z-index:30;font-size:.9rem;max-width:90%;text-align:center}
 .pago{display:flex;justify-content:space-between;gap:10px;align-items:center;border:1px dashed #d6d3d1;border-radius:10px;padding:10px;margin:6px 0}
+.paso{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--c);color:#fff;font-weight:800;font-size:.9rem;margin-right:8px;vertical-align:2px}
 .big{font-size:1.6rem;font-weight:800;letter-spacing:1px;font-variant-numeric:tabular-nums}
 .hide{display:none!important}
 .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
@@ -124,11 +125,11 @@ document.addEventListener('click', e => { const b = e.target.closest('[data-copy
 const iniciales = n => String(n || '').trim().split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase() + '.').join(' ');
 const linkBoleta = (rid, bid) => `${BASE}?r=${encodeURIComponent(rid)}&b=${encodeURIComponent(bid)}`;
 const msgReserva = (r, x, link) =>
-  `🎟️ *Nueva reserva – ${r.titulo}*\n` +
+  `✅ *Pago de rifa – ${r.titulo}*\n` +
   `👤 ${x.nombre}\n📱 ${x.celular}\n` +
   `🔢 Números: *${x.numeros.join(', ')}*\n` +
   `💵 Total: *${money(x.total)}*\n\n` +
-  `Voy a hacer la transferencia y te envío el comprobante por aquí.\n` +
+  `Ya hice la transferencia. Te adjunto el comprobante 👇\n` +
   `Mi boleta: ${link}`;
 function hero(r) {
   const d = r.fechaSorteo ? new Date(r.fechaSorteo) : null;
@@ -292,15 +293,8 @@ function vistaPublica(id) {
           tx.set(resRef, { nombre, celular: cel, numeros: nums, total: nums.length * d.valor, estado: 'pendiente', creada: serverTimestamp() });
         });
         guardarBoleta({ r: id, b: resRef.id, nums, titulo: r.titulo });
-        const lb = linkBoleta(id, resRef.id);
-        if (r.whatsapp) {
-          // La página actual pasa a ser la boleta (al volver de WhatsApp, la ve) y se abre el chat del organizador
-          history.replaceState(null, '', lb);
-          location.href = wa(r.whatsapp, msgReserva(r, { nombre, celular: cel, numeros: nums, total: nums.length * r.valor }, lb));
-          // Al volver de WhatsApp se recarga y muestra la boleta; si WhatsApp no abrió, igual se muestra a los 8 s
-          document.addEventListener('visibilitychange', () => { if (!document.hidden) location.reload(); });
-          setTimeout(() => location.reload(), 8000);
-        } else location.href = lb;
+        // Primero la boleta con los datos de pago; WhatsApp se abre después, cuando la persona ya pagó
+        location.href = linkBoleta(id, resRef.id) + '&nuevo=1';
       } catch (e) {
         b.disabled = false; b.textContent = 'Apartar';
         toast(/permission/i.test(e.message) ? 'No se pudo apartar. Recarga e intenta de nuevo.' : e.message, 4000);
@@ -314,6 +308,7 @@ function vistaPublica(id) {
 // ======================================================================
 function vistaBoleta(id, bid) {
   let r, x;
+  const nuevo = P.has('nuevo');
   main.innerHTML = '<p class="mu">Cargando boleta…</p>';
   const link = `${BASE}?r=${encodeURIComponent(id)}&b=${encodeURIComponent(bid)}`;
   const tablero = `${BASE}?r=${encodeURIComponent(id)}`;
@@ -327,16 +322,22 @@ function vistaBoleta(id, bid) {
     }
     const ok = x.estado === 'pagado';
     const msg = msgReserva(r, x, link);
-    main.innerHTML = hero(r) + avisoEstado(r) + `
-      <section class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">Tu boleta</h2>
+    const boleta = `<section class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">Tu boleta</h2>
         <span class="pill ${ok ? 'p-ok' : 'p-warn'}" style="flex:0 0 auto">${ok ? 'PAGO CONFIRMADO' : 'PENDIENTE DE PAGO'}</span></div>
         <div class="big" style="margin:10px 0">${esc(x.numeros.join(' · '))}</div>
-        <div>${esc(x.nombre)} · Total <b>${money(x.total)}</b></div><div class="mu">Apartada ${esc(fecha(x.creada))}</div></section>
-      ${ok ? `<section class="card"><b>✓ Tu pago fue confirmado.</b> Ya estás participando. ¡Suerte!</section>` : `
-      <section class="card"><h2>Cómo pagar</h2>
-        <ol style="padding-left:18px;margin:0 0 8px"><li>Transfiere <b>${money(x.total)}</b> a uno de estos medios.</li><li>Envía el comprobante al organizador por WhatsApp.</li><li>Espera la confirmación: esta página se actualiza sola.</li></ol>
-        ${pagosHTML(r)}
-        ${r.whatsapp ? `<a class="btn" style="width:100%;margin-top:8px" target="_blank" rel="noopener" href="${esc(wa(r.whatsapp, msg))}">📲 Avisar al organizador por WhatsApp</a>` : ''}</section>`}
+        <div>${esc(x.nombre)} · Total <b>${money(x.total)}</b></div><div class="mu">Apartada ${esc(fecha(x.creada))}</div></section>`;
+    main.innerHTML = hero(r) + avisoEstado(r) + (ok
+      ? boleta + `<section class="card"><b>✓ Tu pago fue confirmado.</b> Ya estás participando. ¡Suerte!</section>`
+      : `${nuevo ? `<div class="card aviso" style="background:#dcfce7;border-color:#bbf7d0;color:var(--ok)">✅ Tus números <b>${esc(x.numeros.join(', '))}</b> quedaron apartados. Ahora paga y envía el comprobante.</div>` : ''}
+      <section class="card"><div class="paso">1</div><h2 style="display:inline">Paga ${money(x.total)}</h2>
+        <p class="mu" style="margin:6px 0 4px">Transfiere desde Nequi o tu banco a uno de estos medios. Toca <b>Copiar</b> y pégalo en tu app.</p>
+        ${pagosHTML(r)}</section>
+      ${r.whatsapp ? `<section class="card"><div class="paso">2</div><h2 style="display:inline">Envía el comprobante</h2>
+        <p class="mu" style="margin:6px 0 10px">Cuando hayas pagado, toca el botón y <b>adjunta la captura</b> del comprobante en el chat.</p>
+        <a class="btn" style="width:100%;font-size:1rem;padding:14px" target="_blank" rel="noopener" href="${esc(wa(r.whatsapp, msg))}">✅ Ya pagué: enviar comprobante por WhatsApp</a></section>` : ''}
+      <section class="card"><div class="paso">${r.whatsapp ? 3 : 2}</div><h2 style="display:inline">Espera la confirmación</h2>
+        <p class="mu" style="margin:6px 0 0">El organizador revisa el pago y esta página cambia sola a <b>✅ Pago confirmado</b>.</p></section>
+      ${boleta}`) + `
       <section class="card"><p class="mu" style="margin-top:0">Guarda este link para consultar tu boleta:</p>
         <div class="row"><button class="btn2 sm" data-copy="${esc(link)}">Copiar link de mi boleta</button><a class="btn btn2 sm" href="${tablero}">Ver tablero</a></div></section>`;
   };
