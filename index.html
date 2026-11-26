@@ -150,6 +150,9 @@ function hero(r) {
   </section>`;
 }
 function avisoEstado(r) {
+  const agotada = Object.keys(r.ocupados || {}).length >= 10 ** r.cifras;
+  if (agotada && (r.estado === 'abierta' || r.estado === 'cerrada'))
+    return `<div class="card aviso" style="background:linear-gradient(135deg,#fde68a,#f59e0b);border:none;color:#3b2300;font-size:1.1rem">🎉 ¡RIFA AGOTADA! 🎉<div style="font-size:.85rem;font-weight:500">Gracias a todos. Juega con la ${esc(r.loteria)}. ¡Mucha suerte! 🍀</div></div>`;
   if (r.estado === 'borrador') return `<div class="card aviso">⏳ Esta rifa todavía no está abierta.</div>`;
   if (r.estado === 'cerrada') return `<div class="card aviso">🔒 Ventas cerradas · esperando el sorteo</div>`;
   if (r.estado === 'sorteada' && r.resultado) {
@@ -469,14 +472,25 @@ function panelRifa(id, u) {
       <section class="card"><h2>Por confirmar <span class="mu" id="np"></span></h2>
         <p class="mu" style="margin-top:-6px">Las más antiguas primero. Confirma solo cuando veas el dinero en tu cuenta.</p><div id="pend"></div></section>
       <section class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0;flex:3">Pagados <span class="mu" id="npg"></span></h2>
-        <button class="sm btn2" id="csv" style="flex:0 0 auto">Exportar CSV</button></div>
+        <button class="sm btn2" id="csv" style="flex:0 0 auto">📊 Descargar Excel</button></div>
         <input id="bus" placeholder="Buscar nombre, celular o número" style="margin-top:10px"><div id="pag"></div></section>
       <div id="huer"></div>
+      <section class="card"><h2>📢 Mensaje a los compradores</h2>
+        <p class="mu" style="margin-top:-6px">WhatsApp no permite envíos masivos: toca <b>Enviar</b> en cada persona, envía y vuelve para la siguiente.</p>
+        <label>Enviar a</label><select id="m_fil"><option value="todos">Todos</option><option value="pagado">Solo pagados</option><option value="pendiente">Solo pendientes</option></select>
+        <label>Mensaje <span class="mu" style="font-weight:400">— usa {nombre}, {numeros}, {rifa}, {loteria}, {fecha}</span></label>
+        <textarea id="m_txt" rows="6"></textarea>
+        <div id="m_lista" style="margin-top:8px"></div>
+        <button class="sm btn2" id="vcf" style="width:100%;margin-top:10px">📇 Descargar contactos (.vcf) para lista de difusión</button></section>
       <section class="card" id="sorteo"></section>
       <section class="card"><h2>Configuración</h2><div id="cfg"></div></section>
       <section class="card"><h2>Eliminar rifa</h2><p class="mu">Borra la rifa y todas sus reservas. No se puede deshacer.</p><button class="btnbad sm" id="del">Eliminar rifa</button></section>`;
     $('bus').oninput = pintar;
-    $('csv').onclick = exportar;
+    $('csv').onclick = () => exportar().catch(e => toast('Error al crear el Excel: ' + e.message, 5000));
+    $('vcf').onclick = contactos;
+    $('m_txt').value = '¡Hola {nombre}! 👋😊\nTe recuerdo que la *{rifa}* juega el {fecha} con la {loteria}. 🎰\n🔢 Tus números: *{numeros}*\n\n¡Mucha suerte! 🍀';
+    $('m_txt').oninput = pintarMasivo; $('m_fil').onchange = pintarMasivo;
+    $('m_lista').addEventListener('click', e => { const a = e.target.closest('a[data-cel]'); if (a) { enviados.add(a.dataset.cel); setTimeout(pintarMasivo, 300); } });
     $('del').onclick = eliminar;
     main.addEventListener('click', accion);
   }
@@ -520,7 +534,45 @@ function panelRifa(id, u) {
       <p class="mu">Aparecen ocupados pero no tienen comprador asociado (error de conexión o uso indebido del link).</p>
       <b>${esc(hu.join(', '))}</b><div style="margin-top:8px"><button class="sm btnbad" data-huer="1">Liberarlos</button></div></section>` : '';
     pintarSorteo(pend, pag);
+    pintarMasivo();
   }
+  // ---------- mensajes a compradores ----------
+  const enviados = new Set();
+  function compradores(filtro) {
+    const m = new Map();
+    res.filter(x => filtro === 'todos' || (filtro === 'pagado' ? x.estado === 'pagado' : x.estado !== 'pagado')).forEach(x => {
+      const k = waNum(x.celular);
+      if (!m.has(k)) m.set(k, { nombre: x.nombre, celular: x.celular, numeros: [] });
+      m.get(k).numeros.push(...x.numeros);
+    });
+    return [...m.values()].map(c => ({ ...c, numeros: c.numeros.sort() })).sort((a, b) => a.nombre.localeCompare(b.nombre));
+  }
+  function pintarMasivo() {
+    if (!$('m_lista')) return;
+    const lista = compradores($('m_fil').value), txt = $('m_txt').value;
+    const d = r.fechaSorteo ? new Date(r.fechaSorteo) : null;
+    const fs = d && !isNaN(d) ? d.toLocaleString('es-CO', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : 'día del sorteo';
+    const armarMsg = c => txt.replaceAll('{nombre}', c.nombre.split(' ')[0]).replaceAll('{numeros}', c.numeros.join(', '))
+      .replaceAll('{rifa}', r.titulo).replaceAll('{loteria}', r.loteria || 'lotería').replaceAll('{fecha}', fs);
+    const n = lista.filter(c => enviados.has(waNum(c.celular))).length;
+    $('m_lista').innerHTML = !lista.length ? '<p class="mu">No hay compradores en este grupo.</p>'
+      : `<p class="mu" style="margin:0 0 4px">${n} de ${lista.length} enviados</p>` + lista.map(c => {
+        const ok = enviados.has(waNum(c.celular));
+        return `<div class="item row" style="justify-content:space-between;padding:8px 0${ok ? ';opacity:.55' : ''}">
+          <div style="flex:3;min-width:0"><b>${esc(c.nombre)}</b><div class="mu">${esc(c.numeros.join(', '))}</div></div>
+          <a class="btn sm${ok ? ' btn2' : ''}" style="flex:0 0 auto" data-cel="${esc(waNum(c.celular))}" target="_blank" rel="noopener" href="${esc(wa(c.celular, armarMsg(c)))}">${ok ? '✓ Enviado' : 'Enviar'}</a></div>`;
+      }).join('');
+  }
+  function contactos() {
+    const lista = compradores('todos'); if (!lista.length) return toast('Aún no hay compradores');
+    const e = v => String(v).replace(/[\\;,]/g, m => '\\' + m);
+    const vcf = lista.map(c => ['BEGIN:VCARD', 'VERSION:3.0', `FN:${e(c.nombre)} (Rifa)`, `N:;${e(c.nombre)} (Rifa);;;`,
+      `TEL;TYPE=CELL:+${waNum(c.celular)}`, `NOTE:${e(r.titulo)} – números ${c.numeros.join(' ')}`, 'END:VCARD'].join('\r\n')).join('\r\n');
+    descargar(new Blob([vcf], { type: 'text/vcard;charset=utf-8' }), `contactos-${archivo()}.vcf`);
+    toast(`${lista.length} contactos descargados`);
+  }
+  const archivo = () => (r.titulo || 'rifa').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w]+/g, '-').replace(/^-|-$/g, '');
+  function descargar(blob, nombre) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nombre; document.body.appendChild(a); a.click(); a.remove(); }
   function huerfanos() {
     if (!resListo) return [];
     const usados = new Set(res.flatMap(x => x.numeros));
@@ -718,13 +770,80 @@ function panelRifa(id, u) {
     };
   }
 
-  function exportar() {
-    const cel = v => { const s = String(v ?? ''); return '"' + (/^[=+\-@]/.test(s) ? "'" + s : s).replace(/"/g, '""') + '"'; };
-    const filas = [['Estado', 'Nombre', 'Celular', 'Números', 'Total', 'Apartado', 'Pagado']]
-      .concat(res.map(x => [x.estado, x.nombre, x.celular, x.numeros.join(' '), x.total, fecha(x.creada), fecha(x.pagadoEn)]));
-    const blob = new Blob(['﻿' + filas.map(f => f.map(cel).join(';')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-    a.download = `rifa-${(r.titulo || 'rifa').replace(/[^\w]+/g, '-')}.csv`; a.click();
+  function cargarExcelJS() {
+    if (window.ExcelJS) return Promise.resolve();
+    return new Promise((ok, mal) => { const sc = document.createElement('script'); sc.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js'; sc.onload = ok; sc.onerror = () => mal(new Error('sin conexión')); document.head.appendChild(sc); });
+  }
+  async function exportar() {
+    toast('Preparando Excel…'); await cargarExcelJS();
+    const C = (/^#[0-9a-f]{6}$/i.test(r.color || '') ? r.color : COLOR).slice(1).toUpperCase();
+    const VERDE = 'FFDCFCE7', VERDE_T = 'FF15803D', AMAR = 'FFFEF3C7', AMAR_T = 'FFB45309', GRIS = 'FFE7E5E4';
+    const borde = { top: { style: 'thin', color: { argb: GRIS } }, left: { style: 'thin', color: { argb: GRIS } }, bottom: { style: 'thin', color: { argb: GRIS } }, right: { style: 'thin', color: { argb: GRIS } } };
+    const fill = c => ({ type: 'pattern', pattern: 'solid', fgColor: { argb: c } });
+    const PESOS = '"$"#,##0';
+    const wb = new ExcelJS.Workbook(); wb.creator = 'Rifas';
+    const ord = res.slice().sort((a, b) => (a.estado === b.estado ? 0 : a.estado === 'pagado' ? -1 : 1) || (aFecha(a.creada) || 0) - (aFecha(b.creada) || 0));
+    const pag = ord.filter(x => x.estado === 'pagado'), pen = ord.filter(x => x.estado !== 'pagado');
+    const total = 10 ** r.cifras, oc = Object.keys(r.ocupados || {}).length;
+    const d = r.fechaSorteo ? new Date(r.fechaSorteo) : null;
+    const fs = d && !isNaN(d) ? d.toLocaleString('es-CO', { dateStyle: 'long', timeStyle: 'short' }) : 'por definir';
+
+    // ---- Hoja Ventas ----
+    const ws = wb.addWorksheet('Ventas', { views: [{ state: 'frozen', ySplit: 8, showGridLines: false }] });
+    ws.columns = [{ width: 5 }, { width: 13 }, { width: 28 }, { width: 15 }, { width: 24 }, { width: 7 }, { width: 13 }, { width: 19 }, { width: 19 }];
+    ws.mergeCells('A1:I1'); const t = ws.getCell('A1');
+    t.value = `🎟️  ${r.titulo}`; t.font = { size: 18, bold: true, color: { argb: 'FFFFFFFF' } }; t.fill = fill('FF' + C); t.alignment = { vertical: 'middle', horizontal: 'center' }; ws.getRow(1).height = 36;
+    ws.mergeCells('A2:I2'); const s2 = ws.getCell('A2');
+    s2.value = `🎁 ${r.premio || ''}   ·   🎰 ${r.loteria || ''} (${r.cifras} cifras)   ·   📅 ${fs}   ·   💵 ${money(r.valor)} por número`;
+    s2.font = { size: 11, color: { argb: 'FF44403C' } }; s2.alignment = { horizontal: 'center', wrapText: true }; ws.getRow(2).height = 22;
+    const resumen = [['Números pagados', pag.reduce((a, x) => a + x.numeros.length, 0), null, VERDE, VERDE_T], ['Recaudado', pag.reduce((a, x) => a + x.total, 0), PESOS, VERDE, VERDE_T],
+      ['Por confirmar', pen.reduce((a, x) => a + x.numeros.length, 0), null, AMAR, AMAR_T], ['Pendiente', pen.reduce((a, x) => a + x.total, 0), PESOS, AMAR, AMAR_T], ['Libres', `${total - oc} de ${total}`, null, 'FFF5F5F4', 'FF57534E']];
+    const colsRes = ['B', 'C', 'E', 'G', 'I'];
+    resumen.forEach(([k, v, f, bg, fg], i) => {
+      const a = ws.getCell(`${colsRes[i]}4`), b = ws.getCell(`${colsRes[i]}5`);
+      a.value = k; a.font = { size: 9, bold: true, color: { argb: fg } }; b.value = v; b.font = { size: 14, bold: true, color: { argb: fg } };
+      if (f) b.numFmt = f;
+      [a, b].forEach(c => { c.fill = fill(bg); c.alignment = { horizontal: 'center', vertical: 'middle' }; });
+    });
+    ws.getRow(5).height = 26;
+    const H = ['#', 'Estado', 'Nombre', 'Celular', 'Números', 'Cant.', 'Total', 'Apartado', 'Pagado'];
+    const hr = ws.getRow(8); hr.values = H; hr.height = 22;
+    hr.eachCell(c => { c.font = { bold: true, color: { argb: 'FFFFFFFF' } }; c.fill = fill('FF' + C); c.alignment = { horizontal: 'center', vertical: 'middle' }; c.border = borde; });
+    ord.forEach((x, i) => {
+      const okp = x.estado === 'pagado';
+      const row = ws.addRow([i + 1, okp ? '✅ Pagado' : '⏳ Pendiente', x.nombre, x.celular, x.numeros.join(', '), x.numeros.length, x.total, aFecha(x.creada) || '', aFecha(x.pagadoEn) || '']);
+      row.eachCell({ includeEmpty: true }, (c, n) => { c.border = borde; c.alignment = { vertical: 'middle', horizontal: [3, 5].includes(n) ? 'left' : 'center', wrapText: n === 5 }; if (i % 2) c.fill = fill('FFFAFAF9'); });
+      const e = row.getCell(2); e.fill = fill(okp ? VERDE : AMAR); e.font = { bold: true, color: { argb: okp ? VERDE_T : AMAR_T } };
+      row.getCell(7).numFmt = PESOS; row.getCell(8).numFmt = 'dd/mm/yyyy hh:mm'; row.getCell(9).numFmt = 'dd/mm/yyyy hh:mm';
+    });
+    if (ord.length) {
+      const fin = 8 + ord.length, tr = ws.addRow(['', '', 'TOTAL', '', '', { formula: `SUM(F9:F${fin})` }, { formula: `SUM(G9:G${fin})` }]);
+      tr.eachCell(c => { c.font = { bold: true }; c.border = { top: { style: 'medium', color: { argb: 'FF' + C } } }; });
+      tr.getCell(7).numFmt = PESOS; tr.getCell(6).alignment = tr.getCell(7).alignment = { horizontal: 'center' };
+      ws.autoFilter = { from: 'A8', to: `I${fin}` };
+    }
+    ws.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+
+    // ---- Hoja Tablero ----
+    const wt = wb.addWorksheet('Tablero', { views: [{ showGridLines: false }] });
+    wt.columns = Array.from({ length: 10 }, () => ({ width: 16 }));
+    wt.mergeCells('A1:J1'); const tt = wt.getCell('A1');
+    tt.value = `Tablero – ${r.titulo}`; tt.font = { size: 16, bold: true, color: { argb: 'FFFFFFFF' } }; tt.fill = fill('FF' + C); tt.alignment = { horizontal: 'center', vertical: 'middle' }; wt.getRow(1).height = 30;
+    wt.mergeCells('A2:J2'); const lg = wt.getCell('A2');
+    lg.value = '🟩 Pagado    🟨 Pendiente de pago    ⬜ Libre'; lg.alignment = { horizontal: 'center' }; lg.font = { color: { argb: 'FF57534E' } };
+    const dueno = {}; res.forEach(x => x.numeros.forEach(k => { dueno[k] = x; }));
+    for (let i = 0; i < total; i++) {
+      const k = pad(i, r.cifras), x = dueno[k], c = wt.getCell(4 + Math.floor(i / 10), 1 + (i % 10));
+      c.value = x ? { richText: [{ text: k + '\n', font: { bold: true, size: 12, color: { argb: x.estado === 'pagado' ? VERDE_T : AMAR_T } } }, { text: x.nombre, font: { size: 8 } }] }
+        : { richText: [{ text: k, font: { bold: true, size: 12, color: { argb: 'FFA8A29E' } } }] };
+      c.fill = fill(x ? (x.estado === 'pagado' ? VERDE : AMAR) : 'FFFFFFFF'); c.border = borde;
+      c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+    }
+    for (let rr = 4; rr < 4 + total / 10; rr++) wt.getRow(rr).height = 34;
+    wt.pageSetup = { orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+
+    const buf = await wb.xlsx.writeBuffer();
+    descargar(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `rifa-${archivo()}.xlsx`);
   }
 
   async function eliminar() {
