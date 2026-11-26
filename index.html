@@ -140,9 +140,8 @@ function hero(r) {
       <h1>${esc(r.titulo)}</h1>
       <div class="premio${(r.premio || '').length > 24 ? ' lg' : ''}">🎁 ${esc(r.premio || 'Premio por anunciar')}</div>
       <div class="chips">
-        <span>🎰 ${esc(r.loteria || 'Lotería por definir')}</span>
+        <span>🎰 Últimas ${r.cifras} cifras de la ${esc(r.loteria || 'lotería por definir')}</span>
         ${fs ? `<span>📅 ${esc(fs)}</span>` : ''}
-        <span>🔢 ${r.cifras} cifras</span>
       </div>
       ${r.resolucion ? `<div class="mu">Autorización: ${esc(r.resolucion)}</div>` : ''}
     </div>
